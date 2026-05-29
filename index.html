@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="ブラウザ内だけで処理するテキスト差分チェックツール">
+  <title>テキスト差分チェッカー</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container">
+      <h1>テキスト差分チェッカー</h1>
+      <p class="lead">2つのテキストをブラウザ内で比較します。入力内容はサーバーへ送信・保存されません。</p>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="panel" aria-labelledby="input-heading">
+      <div class="section-header">
+        <div>
+          <h2 id="input-heading">入力</h2>
+          <p>旧テキストと新テキストを貼り付けて比較してください。</p>
+        </div>
+      </div>
+
+      <div class="inputs" aria-label="比較対象テキスト">
+        <label class="text-field">
+          <span>旧テキスト</span>
+          <textarea id="oldText" spellcheck="false" placeholder="比較元のテキストを入力"></textarea>
+        </label>
+        <label class="text-field">
+          <span>新テキスト</span>
+          <textarea id="newText" spellcheck="false" placeholder="比較先のテキストを入力"></textarea>
+        </label>
+      </div>
+
+      <div class="controls" aria-label="差分設定">
+        <fieldset>
+          <legend>差分単位</legend>
+          <label><input type="radio" name="diffMode" value="line" checked> 行単位</label>
+          <label><input type="radio" name="diffMode" value="word"> 単語単位</label>
+        </fieldset>
+        <div class="actions">
+          <button id="compareButton" type="button">比較する</button>
+          <button id="clearButton" type="button" class="secondary">クリア</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="result-heading">
+      <div class="section-header result-header">
+        <div>
+          <h2 id="result-heading">結果</h2>
+          <p id="status" aria-live="polite">まだ比較していません。</p>
+        </div>
+        <dl class="summary" aria-label="差分サマリー">
+          <div>
+            <dt>追加</dt>
+            <dd id="addedCount">0</dd>
+          </div>
+          <div>
+            <dt>削除</dt>
+            <dd id="removedCount">0</dd>
+          </div>
+        </dl>
+      </div>
+
+      <div class="legend" aria-label="凡例">
+        <span><b class="swatch added"></b>追加</span>
+        <span><b class="swatch removed"></b>削除</span>
+        <span><b class="swatch unchanged"></b>変更なし</span>
+      </div>
+
+      <div id="result" class="result" role="region" aria-label="差分結果"></div>
+    </section>
+
+    <section class="notice" aria-label="利用上の注意">
+      <h2>注意</h2>
+      <p>このツールは入力されたテキストをブラウザ内で処理します。入力内容はサーバーへ送信・保存されません。ただし、機密情報・個人情報・パスワード等の入力は避けてください。</p>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p><a href="https://github.com/gomazarashi/text-diff">GitHubリポジトリ</a> / <a href="THIRD_PARTY_NOTICES.md">サードパーティー表示</a></p>
+    </div>
+  </footer>
+
+  <script src="vendor/diff.min.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>
