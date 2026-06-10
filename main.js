@@ -17,6 +17,7 @@
   const workerErrorMessage = '差分計算中に問題が発生しました。時間をおいて再度お試しください。';
   // Worker側の終了通知が戻らない場合でも、画面を復帰させるための最終的な待機上限。
   const workerHardTimeoutMs = 30000;
+  const lineContextSize = 3;
 
   // 連続実行時に古いWorkerの結果を画面へ反映しないため、現在の要求だけを追跡する。
   let activeWorker = null;
@@ -80,7 +81,7 @@
     );
   }
 
-  function renderLineDiff(parts) {
+  function toLineRows(parts) {
     let oldLine = 1;
     let newLine = 1;
     const rows = [];
@@ -95,15 +96,7 @@
         const oldNumber = part.added ? '' : oldLine;
         const newNumber = part.removed ? '' : newLine;
 
-        // 追加行には旧行番号、削除行には新行番号を出さず、左右の対応を崩さずに表示する。
-        rows.push(`
-          <tr class="${type}">
-            <td class="line-number" aria-label="旧テキスト行番号">${oldNumber}</td>
-            <td class="line-number" aria-label="新テキスト行番号">${newNumber}</td>
-            <td class="line-prefix" aria-hidden="true">${prefix}</td>
-            <td class="line-content">${content.length > 0 ? escapeHtml(content) : '&nbsp;'}</td>
-          </tr>
-        `);
+        rows.push({ type, oldNumber, newNumber, prefix, content });
 
         if (!part.added) {
           oldLine += 1;
@@ -114,7 +107,95 @@
       });
     });
 
-    result.innerHTML = `<table class="diff-table"><tbody>${rows.join('')}</tbody></table>`;
+    return rows;
+  }
+
+  function renderLineRow(row) {
+    return `
+      <tr class="${row.type}">
+        <td class="line-number" aria-label="旧テキスト行番号">${row.oldNumber}</td>
+        <td class="line-number" aria-label="新テキスト行番号">${row.newNumber}</td>
+        <td class="line-prefix" aria-hidden="true">${row.prefix}</td>
+        <td class="line-content">${row.content.length > 0 ? escapeHtml(row.content) : '&nbsp;'}</td>
+      </tr>
+    `;
+  }
+
+  function renderCollapsedRow(id, rows) {
+    return `
+      <tr class="diff-collapsed">
+        <td colspan="4">
+          <button type="button" class="expand-lines" data-collapse-id="${id}">
+            ... ${rows.length}行 変更なしを展開
+          </button>
+        </td>
+      </tr>
+    `;
+  }
+
+  function renderLineDiff(parts) {
+    const lineRows = toLineRows(parts);
+    const changedIndexes = [];
+
+    lineRows.forEach((row, index) => {
+      if (row.type !== 'diff-unchanged') {
+        changedIndexes.push(index);
+      }
+    });
+
+    if (changedIndexes.length === 0) {
+      result.innerHTML = '<p class="empty-result">差分はありません。</p>';
+      return;
+    }
+
+    const visible = new Uint8Array(lineRows.length);
+    changedIndexes.forEach((index) => {
+      const start = Math.max(0, index - lineContextSize);
+      const end = Math.min(lineRows.length - 1, index + lineContextSize);
+      for (let i = start; i <= end; i += 1) {
+        visible[i] = 1;
+      }
+    });
+
+    const collapsedBlocks = new Map();
+    const renderedRows = [];
+    let collapsedId = 0;
+    let index = 0;
+
+    while (index < lineRows.length) {
+      if (visible[index]) {
+        renderedRows.push(renderLineRow(lineRows[index]));
+        index += 1;
+        continue;
+      }
+
+      const start = index;
+      while (index < lineRows.length && !visible[index]) {
+        index += 1;
+      }
+
+      const blockRows = lineRows.slice(start, index);
+      const id = String(collapsedId);
+      collapsedId += 1;
+      collapsedBlocks.set(id, blockRows);
+      renderedRows.push(renderCollapsedRow(id, blockRows));
+    }
+
+    result.innerHTML = `<table class="diff-table"><tbody>${renderedRows.join('')}</tbody></table>`;
+    result.querySelectorAll('.expand-lines').forEach((button) => {
+      button.addEventListener('click', () => {
+        const id = button.dataset.collapseId;
+        const blockRows = collapsedBlocks.get(id);
+        const row = button.closest('tr');
+        if (!blockRows || !row) {
+          return;
+        }
+
+        row.insertAdjacentHTML('beforebegin', blockRows.map(renderLineRow).join(''));
+        row.remove();
+        collapsedBlocks.delete(id);
+      });
+    });
   }
 
   function renderWordDiff(parts) {

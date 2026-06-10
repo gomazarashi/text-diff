@@ -404,6 +404,27 @@ button.secondary:hover {
   background: var(--unchanged-bg);
 }
 
+.diff-collapsed td {
+  padding: 8px 10px;
+  color: var(--muted);
+  background: #eeeeee;
+  text-align: center;
+}
+
+.expand-lines {
+  min-height: 32px;
+  padding: 0 12px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  font: inherit;
+}
+
+.expand-lines:hover {
+  background: var(--surface-alt);
+  border-color: var(--border-strong);
+}
+
 .inline-diff {
   margin: 0;
   padding: 18px;

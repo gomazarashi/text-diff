@@ -240,6 +240,7 @@
             expectedAdded: 0,
             expectedRemoved: 0,
             expected: 'complete',
+            expectedNoTable: true,
           },
           {
             name: '1MB 程度のテキストで数行だけ差分',
@@ -249,6 +250,7 @@
             expectedAdded: 3,
             expectedRemoved: 3,
             expected: 'complete',
+            expectedCollapsed: true,
           },
           {
             name: '大量行',
@@ -258,6 +260,7 @@
             expectedAdded: 0,
             expectedRemoved: 0,
             expected: 'complete',
+            expectedNoTable: true,
           },
           {
             name: '改行の少ない長い 1 行',
@@ -267,6 +270,7 @@
             expectedAdded: 0,
             expectedRemoved: 0,
             expected: 'complete',
+            expectedNoTable: true,
           },
         ];
 
@@ -386,11 +390,13 @@
         const appStatus = doc.getElementById('status').textContent;
         const resultText = result.textContent;
         const hasRenderedResult = result.children.length > 0;
+        const hasTable = result.querySelector('.diff-table') !== null;
+        const collapsedCount = result.querySelectorAll('.expand-lines').length;
         const countsMatch = added === testCase.expectedAdded && removed === testCase.expectedRemoved;
 
         row.querySelector('.elapsed').textContent = `${elapsed.toLocaleString()} ms`;
         row.querySelector('.detail').textContent =
-          `追加 ${added} / 削除 ${removed} / result children ${result.children.length}`;
+          `追加 ${added} / 削除 ${removed} / table ${hasTable ? 'あり' : 'なし'} / folded ${collapsedCount}`;
 
         const status = row.querySelector('.status');
         if (testCase.expected === 'aborted') {
@@ -419,6 +425,22 @@
         if (!hasRenderedResult || !countsMatch) {
           status.textContent = 'FAIL';
           status.className = 'status fail';
+          return false;
+        }
+
+        if (testCase.expectedNoTable && hasTable) {
+          status.textContent = 'FAIL';
+          status.className = 'status fail';
+          row.querySelector('.detail').textContent =
+            `差分なしケースでテーブルあり / 追加 ${added} / 削除 ${removed}`;
+          return false;
+        }
+
+        if (testCase.expectedCollapsed && collapsedCount === 0) {
+          status.textContent = 'FAIL';
+          status.className = 'status fail';
+          row.querySelector('.detail').textContent =
+            `折りたたみ行なし / 追加 ${added} / 削除 ${removed}`;
           return false;
         }
 
