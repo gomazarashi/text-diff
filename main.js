@@ -15,8 +15,10 @@
   const diffAbortedMessage = '差分計算が長時間かかったため中止しました。入力を小さく分けるか、差分範囲を絞って再度お試しください。';
   const workerUnavailableMessage = 'このブラウザでは Web Worker を利用できないため、長文比較を実行できません。対応ブラウザで再度お試しください。';
   const workerErrorMessage = '差分計算中に問題が発生しました。時間をおいて再度お試しください。';
+  const workerHardTimeoutMs = 5000;
 
   let activeWorker = null;
+  let activeWorkerTimeoutId = null;
   let latestRequestId = 0;
 
   function getMode() {
@@ -161,6 +163,11 @@
   }
 
   function stopActiveWorker() {
+    if (activeWorkerTimeoutId) {
+      window.clearTimeout(activeWorkerTimeoutId);
+      activeWorkerTimeoutId = null;
+    }
+
     if (activeWorker) {
       activeWorker.terminate();
       activeWorker = null;
@@ -169,6 +176,11 @@
 
   function finishCompare(worker) {
     if (activeWorker === worker) {
+      if (activeWorkerTimeoutId) {
+        window.clearTimeout(activeWorkerTimeoutId);
+        activeWorkerTimeoutId = null;
+      }
+
       activeWorker = null;
       compareButton.disabled = false;
     }
@@ -223,6 +235,15 @@
     activeWorker = worker;
     compareButton.disabled = true;
     showComparing();
+    activeWorkerTimeoutId = window.setTimeout(() => {
+      if (activeWorker !== worker || requestId !== latestRequestId) {
+        return;
+      }
+
+      showAborted();
+      finishCompare(worker);
+      worker.terminate();
+    }, workerHardTimeoutMs);
 
     worker.addEventListener('message', (event) => {
       const data = event.data;
