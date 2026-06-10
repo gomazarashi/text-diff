@@ -13,7 +13,7 @@
       --muted: #4b5563;
       --border: #d1d5db;
       --ok: #047857;
-      --warn: #b45309;
+      --slow: #b45309;
       --fail: #b91c1c;
       --accent: #2563eb;
     }
@@ -110,8 +110,8 @@
       font-weight: 700;
     }
 
-    .warn {
-      color: var(--warn);
+    .slow {
+      color: var(--slow);
       font-weight: 700;
     }
 
@@ -131,7 +131,7 @@
 <body>
   <main>
     <h1>長文比較 回帰検証</h1>
-    <p>issue #1 の再発確認用に、実ページへ長文を入力して行単位比較を実行します。処理が戻り、件数と結果 DOM が更新されることを確認します。</p>
+    <p>実ページへ長文を入力して行単位比較を実行します。処理が戻り、件数と結果 DOM が更新されることを確認します。</p>
 
     <div class="toolbar">
       <button id="runButton" type="button">検証を実行</button>
@@ -162,7 +162,8 @@
       const summary = document.getElementById('summary');
       const casesBody = document.getElementById('cases');
       const target = document.getElementById('target');
-      const warnAfterMs = 10000;
+      const slowAfterMs = 10000;
+      const suite = new URLSearchParams(window.location.search).get('suite') || 'standard';
 
       function bytes(value) {
         return new TextEncoder().encode(value).length;
@@ -216,7 +217,16 @@
         const manyLines = makeManyLines(50000);
         const longLine = makeLongLine(oneMb);
 
-        return [
+        const standardCases = [
+          {
+            name: '小さな差分',
+            size: '3 lines / 1 changed line',
+            before: 'alpha\nbravo\ncharlie\n',
+            after: 'alpha\nBRAVO\ncharlie\n',
+            expectedAdded: 1,
+            expectedRemoved: 1,
+            expected: 'complete',
+          },
           {
             name: '1MB 程度の同一テキスト',
             size: `${bytes(sameOneMb).toLocaleString()} bytes`,
@@ -224,6 +234,7 @@
             after: sameOneMb,
             expectedAdded: 0,
             expectedRemoved: 0,
+            expected: 'complete',
           },
           {
             name: '1MB 程度のテキストで数行だけ差分',
@@ -232,6 +243,7 @@
             after: changedLines.join('\n'),
             expectedAdded: 3,
             expectedRemoved: 3,
+            expected: 'complete',
           },
           {
             name: '大量行',
@@ -240,6 +252,7 @@
             after: manyLines,
             expectedAdded: 0,
             expectedRemoved: 0,
+            expected: 'complete',
           },
           {
             name: '改行の少ない長い 1 行',
@@ -248,15 +261,41 @@
             after: longLine,
             expectedAdded: 0,
             expectedRemoved: 0,
+            expected: 'complete',
           },
+        ];
+
+        const stressCases = [
           {
-            name: '安全策による計算中止',
+            name: '大規模な全差分の中止',
             size: '100,000 lines / all different',
             before: makeDifferentLines(100000, 'before'),
             after: makeDifferentLines(100000, 'after'),
-            expectedAborted: true,
+            expected: 'aborted',
           },
         ];
+
+        if (suite === 'stress') {
+          return stressCases;
+        }
+
+        if (suite === 'all') {
+          return standardCases.concat(stressCases);
+        }
+
+        return standardCases;
+      }
+
+      function suiteLabel() {
+        if (suite === 'stress') {
+          return 'ストレス検証';
+        }
+
+        if (suite === 'all') {
+          return '全検証';
+        }
+
+        return '標準検証';
       }
 
       function waitForTarget() {
@@ -347,7 +386,7 @@
           `追加 ${added} / 削除 ${removed} / result children ${result.children.length}`;
 
         const status = row.querySelector('.status');
-        if (testCase.expectedAborted) {
+        if (testCase.expected === 'aborted') {
           const aborted =
             appStatus === '差分計算を中止しました。'
             && resultText.includes('差分計算が長時間かかったため中止しました。')
@@ -362,8 +401,8 @@
             return false;
           }
 
-          status.textContent = elapsed > warnAfterMs ? 'WARN' : 'PASS';
-          status.className = elapsed > warnAfterMs ? 'status warn' : 'status pass';
+          status.textContent = elapsed > slowAfterMs ? 'SLOW' : 'PASS';
+          status.className = elapsed > slowAfterMs ? 'status slow' : 'status pass';
           row.querySelector('.detail').textContent =
             `中止メッセージ表示 / 追加 ${added} / 削除 ${removed}`;
           return true;
@@ -375,9 +414,9 @@
           return false;
         }
 
-        if (elapsed > warnAfterMs) {
-          status.textContent = 'WARN';
-          status.className = 'status warn';
+        if (elapsed > slowAfterMs) {
+          status.textContent = 'SLOW';
+          status.className = 'status slow';
           return true;
         }
 
@@ -389,7 +428,7 @@
       runButton.addEventListener('click', async () => {
         runButton.disabled = true;
         casesBody.textContent = '';
-        summary.textContent = '実行中...';
+        summary.textContent = `${suiteLabel()} 実行中...`;
 
         await waitForTarget();
 
@@ -413,7 +452,7 @@
           }
         }
 
-        summary.textContent = `${passed} / ${testCases.length} ケース完了`;
+        summary.textContent = `${suiteLabel()}: ${passed} / ${testCases.length} ケース完了`;
         runButton.disabled = false;
       });
 
