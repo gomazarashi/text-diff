@@ -3,8 +3,8 @@
   'use strict';
 
   const diffOptions = {
-    timeout: 3000,
-    maxEditLength: 20000,
+    timeout: 25000,
+    maxEditLength: 100000,
   };
   const loadErrorMessage = '差分ライブラリを読み込めませんでした。vendor/diff.min.js を確認してください。';
   const diffErrorMessage = '差分計算中に問題が発生しました。';

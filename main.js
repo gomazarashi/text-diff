@@ -15,7 +15,7 @@
   const diffAbortedMessage = '差分計算が長時間かかったため中止しました。入力を小さく分けるか、差分範囲を絞って再度お試しください。';
   const workerUnavailableMessage = 'このブラウザでは Web Worker を利用できないため、長文比較を実行できません。対応ブラウザで再度お試しください。';
   const workerErrorMessage = '差分計算中に問題が発生しました。時間をおいて再度お試しください。';
-  const workerHardTimeoutMs = 5000;
+  const workerHardTimeoutMs = 30000;
 
   let activeWorker = null;
   let activeWorkerTimeoutId = null;
