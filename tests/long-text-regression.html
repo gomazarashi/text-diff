@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>長文比較 回帰検証</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f3f4f6;
+      --surface: #ffffff;
+      --text: #111827;
+      --muted: #4b5563;
+      --border: #d1d5db;
+      --ok: #047857;
+      --warn: #b45309;
+      --fail: #b91c1c;
+      --accent: #2563eb;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.5;
+    }
+
+    main {
+      width: min(1120px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 24px 0 32px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 1.8rem;
+      line-height: 1.2;
+      font-weight: 650;
+    }
+
+    p {
+      margin: 0 0 16px;
+      color: var(--muted);
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin: 0 0 16px;
+    }
+
+    button {
+      min-height: 40px;
+      padding: 8px 14px;
+      color: #ffffff;
+      background: var(--accent);
+      border: 1px solid var(--accent);
+      border-radius: 4px;
+      font: inherit;
+      font-weight: 650;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      cursor: wait;
+      opacity: 0.65;
+    }
+
+    #summary {
+      color: var(--text);
+      font-weight: 650;
+    }
+
+    table {
+      width: 100%;
+      margin: 0 0 16px;
+      background: var(--surface);
+      border-collapse: collapse;
+      border: 1px solid var(--border);
+    }
+
+    th,
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      vertical-align: top;
+      font-size: 0.92rem;
+    }
+
+    th {
+      background: #e5e7eb;
+      color: #374151;
+      font-weight: 650;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .pass {
+      color: var(--ok);
+      font-weight: 700;
+    }
+
+    .warn {
+      color: var(--warn);
+      font-weight: 700;
+    }
+
+    .fail {
+      color: var(--fail);
+      font-weight: 700;
+    }
+
+    iframe {
+      width: 100%;
+      height: 520px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>長文比較 回帰検証</h1>
+    <p>issue #1 の再発確認用に、実ページへ長文を入力して行単位比較を実行します。処理が戻り、件数と結果 DOM が更新されることを確認します。</p>
+
+    <div class="toolbar">
+      <button id="runButton" type="button">検証を実行</button>
+      <span id="summary">未実行</span>
+    </div>
+
+    <table aria-label="検証結果">
+      <thead>
+        <tr>
+          <th>ケース</th>
+          <th>入力規模</th>
+          <th>結果</th>
+          <th>時間</th>
+          <th>詳細</th>
+        </tr>
+      </thead>
+      <tbody id="cases"></tbody>
+    </table>
+
+    <iframe id="target" src="../index.html" title="検証対象ページ"></iframe>
+  </main>
+
+  <script>
+    (() => {
+      'use strict';
+
+      const runButton = document.getElementById('runButton');
+      const summary = document.getElementById('summary');
+      const casesBody = document.getElementById('cases');
+      const target = document.getElementById('target');
+      const warnAfterMs = 10000;
+
+      function bytes(value) {
+        return new TextEncoder().encode(value).length;
+      }
+
+      function makeLineText(targetBytes, prefix) {
+        const lines = [];
+        let index = 0;
+        let size = 0;
+
+        while (size < targetBytes) {
+          const line = `${prefix}-${String(index).padStart(6, '0')} abcdefghijklmnopqrstuvwxyz 0123456789\n`;
+          lines.push(line);
+          size += bytes(line);
+          index += 1;
+        }
+
+        return lines.join('');
+      }
+
+      function makeManyLines(count) {
+        const lines = [];
+        for (let i = 0; i < count; i += 1) {
+          lines.push(`line-${String(i).padStart(5, '0')} stable text`);
+        }
+        return `${lines.join('\n')}\n`;
+      }
+
+      function makeLongLine(targetBytes) {
+        const chunk = 'abcdefghijklmnopqrstuvwxyz0123456789';
+        const repeat = Math.ceil(targetBytes / chunk.length);
+        return chunk.repeat(repeat).slice(0, targetBytes);
+      }
+
+      function buildCases() {
+        const oneMb = 1024 * 1024;
+        const sameOneMb = makeLineText(oneMb, 'same');
+        const changedLines = sameOneMb.split('\n');
+        changedLines[20] = 'changed-000020 DIFF';
+        changedLines[400] = 'changed-000400 DIFF';
+        changedLines[800] = 'changed-000800 DIFF';
+
+        const manyLines = makeManyLines(50000);
+        const longLine = makeLongLine(oneMb);
+
+        return [
+          {
+            name: '1MB 程度の同一テキスト',
+            size: `${bytes(sameOneMb).toLocaleString()} bytes`,
+            before: sameOneMb,
+            after: sameOneMb,
+            expectedAdded: 0,
+            expectedRemoved: 0,
+          },
+          {
+            name: '1MB 程度のテキストで数行だけ差分',
+            size: `${bytes(sameOneMb).toLocaleString()} bytes / 3 changed lines`,
+            before: sameOneMb,
+            after: changedLines.join('\n'),
+            expectedAdded: 3,
+            expectedRemoved: 3,
+          },
+          {
+            name: '大量行',
+            size: '50,000 lines',
+            before: manyLines,
+            after: manyLines,
+            expectedAdded: 0,
+            expectedRemoved: 0,
+          },
+          {
+            name: '改行の少ない長い 1 行',
+            size: `${bytes(longLine).toLocaleString()} bytes / 1 line`,
+            before: longLine,
+            after: longLine,
+            expectedAdded: 0,
+            expectedRemoved: 0,
+          },
+        ];
+      }
+
+      function waitForTarget() {
+        if (
+          target.contentDocument
+          && target.contentDocument.readyState === 'complete'
+          && target.contentDocument.getElementById('oldText')
+        ) {
+          return Promise.resolve();
+        }
+
+        return new Promise((resolve) => {
+          target.addEventListener('load', () => resolve(), { once: true });
+        });
+      }
+
+      function nextFrame(win) {
+        return new Promise((resolve) => {
+          win.requestAnimationFrame(() => win.requestAnimationFrame(resolve));
+        });
+      }
+
+      function appendRow(testCase) {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${testCase.name}</td>
+          <td>${testCase.size}</td>
+          <td class="status">待機中</td>
+          <td class="elapsed">-</td>
+          <td class="detail">-</td>
+        `;
+        casesBody.append(row);
+        return row;
+      }
+
+      async function runCase(testCase, row) {
+        const doc = target.contentDocument;
+        const win = target.contentWindow;
+        const oldText = doc.getElementById('oldText');
+        const newText = doc.getElementById('newText');
+        const compareButton = doc.getElementById('compareButton');
+        const lineMode = doc.querySelector('input[name="diffMode"][value="line"]');
+
+        oldText.value = testCase.before;
+        newText.value = testCase.after;
+        lineMode.checked = true;
+
+        await nextFrame(win);
+
+        const start = performance.now();
+        compareButton.click();
+        await nextFrame(win);
+        const elapsed = Math.round(performance.now() - start);
+
+        const added = Number(doc.getElementById('addedCount').textContent);
+        const removed = Number(doc.getElementById('removedCount').textContent);
+        const result = doc.getElementById('result');
+        const hasRenderedResult = result.children.length > 0;
+        const countsMatch = added === testCase.expectedAdded && removed === testCase.expectedRemoved;
+
+        row.querySelector('.elapsed').textContent = `${elapsed.toLocaleString()} ms`;
+        row.querySelector('.detail').textContent =
+          `追加 ${added} / 削除 ${removed} / result children ${result.children.length}`;
+
+        const status = row.querySelector('.status');
+        if (!hasRenderedResult || !countsMatch) {
+          status.textContent = 'FAIL';
+          status.className = 'status fail';
+          return false;
+        }
+
+        if (elapsed > warnAfterMs) {
+          status.textContent = 'WARN';
+          status.className = 'status warn';
+          return true;
+        }
+
+        status.textContent = 'PASS';
+        status.className = 'status pass';
+        return true;
+      }
+
+      runButton.addEventListener('click', async () => {
+        runButton.disabled = true;
+        casesBody.textContent = '';
+        summary.textContent = '実行中...';
+
+        await waitForTarget();
+
+        const testCases = buildCases();
+        let passed = 0;
+
+        for (const testCase of testCases) {
+          const row = appendRow(testCase);
+          const status = row.querySelector('.status');
+          status.textContent = '実行中';
+
+          try {
+            const ok = await runCase(testCase, row);
+            if (ok) {
+              passed += 1;
+            }
+          } catch (error) {
+            status.textContent = 'FAIL';
+            status.className = 'status fail';
+            row.querySelector('.detail').textContent = error instanceof Error ? error.message : String(error);
+          }
+        }
+
+        summary.textContent = `${passed} / ${testCases.length} ケース完了`;
+        runButton.disabled = false;
+      });
+
+      if (new URLSearchParams(window.location.search).has('autorun')) {
+        window.addEventListener('load', () => {
+          setTimeout(() => runButton.click(), 0);
+        });
+      }
+    })();
+  </script>
+</body>
+</html>
