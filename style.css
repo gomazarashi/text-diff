@@ -382,6 +382,43 @@ button.secondary:hover {
   overflow-wrap: anywhere;
 }
 
+.split-diff-table {
+  min-width: 980px;
+  table-layout: fixed;
+}
+
+.split-line-number {
+  width: 4.75rem;
+  padding: 5px 8px;
+  color: var(--muted);
+  background: #f1f1f1;
+  border-right: 1px solid #d8d8d8;
+  text-align: right;
+  user-select: none;
+}
+
+.split-content {
+  width: calc((100% - 9.5rem) / 2);
+  padding: 5px 10px;
+  background: var(--unchanged-bg);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.split-content + .split-line-number {
+  border-left: 2px solid var(--border);
+}
+
+.split-old-content-changed {
+  background: var(--removed-bg);
+  border-left: 4px solid var(--removed-border);
+}
+
+.split-new-content-changed {
+  background: var(--added-bg);
+  border-left: 4px solid var(--added-border);
+}
+
 .diff-added {
   background: var(--added-bg);
 }

@@ -233,6 +233,17 @@
             expected: 'complete',
           },
           {
+            name: '左右比較の小さな差分',
+            size: '3 lines / 1 changed line',
+            before: 'alpha\nbravo\ncharlie\n',
+            after: 'alpha\nBRAVO\ncharlie\n',
+            expectedAdded: 1,
+            expectedRemoved: 1,
+            expected: 'complete',
+            viewMode: 'split',
+            expectedSplit: true,
+          },
+          {
             name: '1MB 程度の同一テキスト',
             size: `${bytes(sameOneMb).toLocaleString()} bytes`,
             before: sameOneMb,
@@ -250,6 +261,18 @@
             expectedAdded: 3,
             expectedRemoved: 3,
             expected: 'complete',
+            expectedCollapsed: true,
+          },
+          {
+            name: '左右比較で長文の数行だけ差分',
+            size: `${bytes(sameOneMb).toLocaleString()} bytes / 3 changed lines`,
+            before: sameOneMb,
+            after: changedLines.join('\n'),
+            expectedAdded: 3,
+            expectedRemoved: 3,
+            expected: 'complete',
+            viewMode: 'split',
+            expectedSplit: true,
             expectedCollapsed: true,
           },
           {
@@ -372,10 +395,17 @@
         const newText = doc.getElementById('newText');
         const compareButton = doc.getElementById('compareButton');
         const lineMode = doc.querySelector('input[name="diffMode"][value="line"]');
+        const unifiedView = doc.querySelector('input[name="viewMode"][value="unified"]');
+        const splitView = doc.querySelector('input[name="viewMode"][value="split"]');
 
         oldText.value = testCase.before;
         newText.value = testCase.after;
         lineMode.checked = true;
+        if (testCase.viewMode === 'split') {
+          splitView.checked = true;
+        } else {
+          unifiedView.checked = true;
+        }
 
         await nextFrame(win);
 
@@ -391,12 +421,13 @@
         const resultText = result.textContent;
         const hasRenderedResult = result.children.length > 0;
         const hasTable = result.querySelector('.diff-table') !== null;
+        const hasSplitTable = result.querySelector('.split-diff-table') !== null;
         const collapsedCount = result.querySelectorAll('.expand-lines').length;
         const countsMatch = added === testCase.expectedAdded && removed === testCase.expectedRemoved;
 
         row.querySelector('.elapsed').textContent = `${elapsed.toLocaleString()} ms`;
         row.querySelector('.detail').textContent =
-          `追加 ${added} / 削除 ${removed} / table ${hasTable ? 'あり' : 'なし'} / folded ${collapsedCount}`;
+          `追加 ${added} / 削除 ${removed} / table ${hasTable ? 'あり' : 'なし'} / split ${hasSplitTable ? 'あり' : 'なし'} / folded ${collapsedCount}`;
 
         const status = row.querySelector('.status');
         if (testCase.expected === 'aborted') {
@@ -441,6 +472,14 @@
           status.className = 'status fail';
           row.querySelector('.detail').textContent =
             `折りたたみ行なし / 追加 ${added} / 削除 ${removed}`;
+          return false;
+        }
+
+        if (testCase.expectedSplit && !hasSplitTable) {
+          status.textContent = 'FAIL';
+          status.className = 'status fail';
+          row.querySelector('.detail').textContent =
+            `左右比較テーブルなし / 追加 ${added} / 削除 ${removed}`;
           return false;
         }
 

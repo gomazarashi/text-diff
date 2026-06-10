@@ -29,6 +29,11 @@
     return selected ? selected.value : 'line';
   }
 
+  function getViewMode() {
+    const selected = document.querySelector('input[name="viewMode"]:checked');
+    return selected ? selected.value : 'unified';
+  }
+
   function escapeHtml(value) {
     return value
       .replaceAll('&', '&amp;')
@@ -198,6 +203,155 @@
     });
   }
 
+  function toSplitRows(lineRows) {
+    const rows = [];
+    let index = 0;
+
+    while (index < lineRows.length) {
+      const row = lineRows[index];
+
+      if (row.type === 'diff-unchanged') {
+        rows.push({
+          type: 'split-unchanged',
+          oldNumber: row.oldNumber,
+          newNumber: row.newNumber,
+          oldContent: row.content,
+          newContent: row.content,
+        });
+        index += 1;
+        continue;
+      }
+
+      if (row.type === 'diff-removed') {
+        const removedRows = [];
+        const addedRows = [];
+
+        while (index < lineRows.length && lineRows[index].type === 'diff-removed') {
+          removedRows.push(lineRows[index]);
+          index += 1;
+        }
+
+        while (index < lineRows.length && lineRows[index].type === 'diff-added') {
+          addedRows.push(lineRows[index]);
+          index += 1;
+        }
+
+        const length = Math.max(removedRows.length, addedRows.length);
+        for (let i = 0; i < length; i += 1) {
+          const removed = removedRows[i];
+          const added = addedRows[i];
+          rows.push({
+            type: 'split-changed',
+            oldNumber: removed ? removed.oldNumber : '',
+            newNumber: added ? added.newNumber : '',
+            oldContent: removed ? removed.content : '',
+            newContent: added ? added.content : '',
+            oldChanged: removed !== undefined,
+            newChanged: added !== undefined,
+          });
+        }
+        continue;
+      }
+
+      rows.push({
+        type: 'split-changed',
+        oldNumber: '',
+        newNumber: row.newNumber,
+        oldContent: '',
+        newContent: row.content,
+        oldChanged: false,
+        newChanged: true,
+      });
+      index += 1;
+    }
+
+    return rows;
+  }
+
+  function renderSplitCell(content, changed, side) {
+    const sideClass = side === 'old' ? 'split-old-content' : 'split-new-content';
+    const changedClass = changed ? ` ${sideClass}-changed` : '';
+    const className = `split-content ${sideClass}${changedClass}`;
+    return `<td class="${className}">${content.length > 0 ? escapeHtml(content) : '&nbsp;'}</td>`;
+  }
+
+  function renderSplitRow(row) {
+    return `
+      <tr class="${row.type}">
+        <td class="split-line-number" aria-label="旧テキスト行番号">${row.oldNumber}</td>
+        ${renderSplitCell(row.oldContent, row.oldChanged, 'old')}
+        <td class="split-line-number" aria-label="新テキスト行番号">${row.newNumber}</td>
+        ${renderSplitCell(row.newContent, row.newChanged, 'new')}
+      </tr>
+    `;
+  }
+
+  function renderSplitLineDiff(parts) {
+    const lineRows = toLineRows(parts);
+    const splitRows = toSplitRows(lineRows);
+    const changedIndexes = [];
+
+    splitRows.forEach((row, index) => {
+      if (row.type !== 'split-unchanged') {
+        changedIndexes.push(index);
+      }
+    });
+
+    if (changedIndexes.length === 0) {
+      result.innerHTML = '<p class="empty-result">差分はありません。</p>';
+      return;
+    }
+
+    const visible = new Uint8Array(splitRows.length);
+    changedIndexes.forEach((index) => {
+      const start = Math.max(0, index - lineContextSize);
+      const end = Math.min(splitRows.length - 1, index + lineContextSize);
+      for (let i = start; i <= end; i += 1) {
+        visible[i] = 1;
+      }
+    });
+
+    const collapsedBlocks = new Map();
+    const renderedRows = [];
+    let collapsedId = 0;
+    let index = 0;
+
+    while (index < splitRows.length) {
+      if (visible[index]) {
+        renderedRows.push(renderSplitRow(splitRows[index]));
+        index += 1;
+        continue;
+      }
+
+      const start = index;
+      while (index < splitRows.length && !visible[index]) {
+        index += 1;
+      }
+
+      const blockRows = splitRows.slice(start, index);
+      const id = String(collapsedId);
+      collapsedId += 1;
+      collapsedBlocks.set(id, blockRows);
+      renderedRows.push(renderCollapsedRow(id, blockRows));
+    }
+
+    result.innerHTML = `<table class="diff-table split-diff-table"><tbody>${renderedRows.join('')}</tbody></table>`;
+    result.querySelectorAll('.expand-lines').forEach((button) => {
+      button.addEventListener('click', () => {
+        const id = button.dataset.collapseId;
+        const blockRows = collapsedBlocks.get(id);
+        const row = button.closest('tr');
+        if (!blockRows || !row) {
+          return;
+        }
+
+        row.insertAdjacentHTML('beforebegin', blockRows.map(renderSplitRow).join(''));
+        row.remove();
+        collapsedBlocks.delete(id);
+      });
+    });
+  }
+
   function renderWordDiff(parts) {
     const html = parts.map((part) => {
       const content = escapeHtml(part.value);
@@ -283,7 +437,12 @@
         ? '差分はありません。'
         : `単語単位の差分を表示しています。`;
     } else {
-      renderLineDiff(parts);
+      if (getViewMode() === 'split') {
+        renderSplitLineDiff(parts);
+      } else {
+        renderLineDiff(parts);
+      }
+
       status.textContent = counts.added === 0 && counts.removed === 0
         ? '差分はありません。'
         : `行単位の差分を表示しています。`;
