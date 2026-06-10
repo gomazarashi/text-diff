@@ -197,6 +197,14 @@
         return chunk.repeat(repeat).slice(0, targetBytes);
       }
 
+      function makeDifferentLines(count, prefix) {
+        const lines = [];
+        for (let i = 0; i < count; i += 1) {
+          lines.push(`${prefix}-${String(i).padStart(5, '0')}`);
+        }
+        return `${lines.join('\n')}\n`;
+      }
+
       function buildCases() {
         const oneMb = 1024 * 1024;
         const sameOneMb = makeLineText(oneMb, 'same');
@@ -240,6 +248,13 @@
             after: longLine,
             expectedAdded: 0,
             expectedRemoved: 0,
+          },
+          {
+            name: '安全策による計算中止',
+            size: '25,000 lines / all different',
+            before: makeDifferentLines(25000, 'before'),
+            after: makeDifferentLines(25000, 'after'),
+            expectedAborted: true,
           },
         ];
       }
@@ -299,6 +314,8 @@
         const added = Number(doc.getElementById('addedCount').textContent);
         const removed = Number(doc.getElementById('removedCount').textContent);
         const result = doc.getElementById('result');
+        const appStatus = doc.getElementById('status').textContent;
+        const resultText = result.textContent;
         const hasRenderedResult = result.children.length > 0;
         const countsMatch = added === testCase.expectedAdded && removed === testCase.expectedRemoved;
 
@@ -307,6 +324,28 @@
           `追加 ${added} / 削除 ${removed} / result children ${result.children.length}`;
 
         const status = row.querySelector('.status');
+        if (testCase.expectedAborted) {
+          const aborted =
+            appStatus === '差分計算を中止しました。'
+            && resultText.includes('差分計算が長時間かかったため中止しました。')
+            && added === 0
+            && removed === 0;
+
+          if (!aborted) {
+            status.textContent = 'FAIL';
+            status.className = 'status fail';
+            row.querySelector('.detail').textContent =
+              `中止メッセージなし / status "${appStatus}" / 追加 ${added} / 削除 ${removed}`;
+            return false;
+          }
+
+          status.textContent = elapsed > warnAfterMs ? 'WARN' : 'PASS';
+          status.className = elapsed > warnAfterMs ? 'status warn' : 'status pass';
+          row.querySelector('.detail').textContent =
+            `中止メッセージ表示 / 追加 ${added} / 削除 ${removed}`;
+          return true;
+        }
+
         if (!hasRenderedResult || !countsMatch) {
           status.textContent = 'FAIL';
           status.className = 'status fail';

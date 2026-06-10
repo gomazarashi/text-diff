@@ -12,6 +12,11 @@
   const removedCount = document.getElementById('removedCount');
 
   const emptyMessage = '比較対象のテキストを入力してください。';
+  const diffOptions = {
+    timeout: 3000,
+    maxEditLength: 20000,
+  };
+  const diffAbortedMessage = '差分計算が長時間かかったため中止しました。入力を小さく分けるか、差分範囲を絞って再度お試しください。';
 
   function getMode() {
     const selected = document.querySelector('input[name="diffMode"]:checked');
@@ -126,6 +131,13 @@
     removedCount.textContent = '0';
   }
 
+  function showAborted() {
+    result.innerHTML = `<p class="empty-result">${escapeHtml(diffAbortedMessage)}</p>`;
+    status.textContent = '差分計算を中止しました。';
+    addedCount.textContent = '0';
+    removedCount.textContent = '0';
+  }
+
   function compare() {
     if (typeof window.Diff === 'undefined') {
       showEmpty('差分ライブラリを読み込めませんでした。vendor/diff.min.js を確認してください。');
@@ -142,8 +154,13 @@
 
     const mode = getMode();
     const parts = mode === 'word'
-      ? window.Diff.diffWordsWithSpace(before, after)
-      : window.Diff.diffLines(before, after);
+      ? window.Diff.diffWordsWithSpace(before, after, diffOptions)
+      : window.Diff.diffLines(before, after, diffOptions);
+
+    if (typeof parts === 'undefined') {
+      showAborted();
+      return;
+    }
 
     const counts = mode === 'word' ? countWordItems(parts) : countLineItems(parts);
 
