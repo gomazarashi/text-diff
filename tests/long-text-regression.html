@@ -163,6 +163,7 @@
       const casesBody = document.getElementById('cases');
       const target = document.getElementById('target');
       const slowAfterMs = 10000;
+      // URLのsuite指定で、日常確認用と重いストレス確認を切り替える。
       const suite = new URLSearchParams(window.location.search).get('suite') || 'standard';
 
       function bytes(value) {
@@ -170,6 +171,7 @@
       }
 
       function makeLineText(targetBytes, prefix) {
+        // 目標バイト数を超えるまで、比較しやすい固定長に近い行を積み上げる。
         const lines = [];
         let index = 0;
         let size = 0;
@@ -209,6 +211,8 @@
       function buildCases() {
         const oneMb = 1024 * 1024;
         const sameOneMb = makeLineText(oneMb, 'same');
+
+        // 大部分が同じ長文で、少数行だけ変わる実利用に近いケースを作る。
         const changedLines = sameOneMb.split('\n');
         changedLines[20] = 'changed-000020 DIFF';
         changedLines[400] = 'changed-000400 DIFF';
@@ -218,6 +222,7 @@
         const longLine = makeLongLine(oneMb);
 
         const standardCases = [
+          // 標準検証は、通常利用で完了してほしい入力を中心にする。
           {
             name: '小さな差分',
             size: '3 lines / 1 changed line',
@@ -266,6 +271,7 @@
         ];
 
         const stressCases = [
+          // ストレス検証は、中止表示とUI復帰を確認するための重い入力だけに分ける。
           {
             name: '大規模な全差分の中止',
             size: '100,000 lines / all different',
@@ -324,6 +330,7 @@
         return new Promise((resolve, reject) => {
           function check() {
             const appStatus = doc.getElementById('status').textContent;
+            // 実ページのステータスが「計算中」以外になれば、成功/中止/失敗の判定へ進める。
             if (appStatus !== '差分計算中です。') {
               resolve();
               return;
@@ -387,6 +394,7 @@
 
         const status = row.querySelector('.status');
         if (testCase.expected === 'aborted') {
+          // 中止ケースは結果の件数ではなく、中止メッセージとカウンタ初期化を期待値にする。
           const aborted =
             appStatus === '差分計算を中止しました。'
             && resultText.includes('差分計算が長時間かかったため中止しました。')
@@ -415,6 +423,7 @@
         }
 
         if (elapsed > slowAfterMs) {
+          // SLOWは期待結果は満たしたが、性能上の注意が必要なケースとして扱う。
           status.textContent = 'SLOW';
           status.className = 'status slow';
           return true;

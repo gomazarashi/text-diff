@@ -15,8 +15,10 @@
   const diffAbortedMessage = '差分計算が長時間かかったため中止しました。入力を小さく分けるか、差分範囲を絞って再度お試しください。';
   const workerUnavailableMessage = 'このブラウザでは Web Worker を利用できないため、長文比較を実行できません。対応ブラウザで再度お試しください。';
   const workerErrorMessage = '差分計算中に問題が発生しました。時間をおいて再度お試しください。';
+  // Worker側の終了通知が戻らない場合でも、画面を復帰させるための最終的な待機上限。
   const workerHardTimeoutMs = 30000;
 
+  // 連続実行時に古いWorkerの結果を画面へ反映しないため、現在の要求だけを追跡する。
   let activeWorker = null;
   let activeWorkerTimeoutId = null;
   let latestRequestId = 0;
@@ -39,6 +41,8 @@
     if (value.length === 0) {
       return [];
     }
+
+    // 末尾改行を含む行を1単位として扱い、空の最終要素だけを除外する。
     return value.match(/.*(?:\n|$)/g).filter((line) => line.length > 0);
   }
 
@@ -91,6 +95,7 @@
         const oldNumber = part.added ? '' : oldLine;
         const newNumber = part.removed ? '' : newLine;
 
+        // 追加行には旧行番号、削除行には新行番号を出さず、左右の対応を崩さずに表示する。
         rows.push(`
           <tr class="${type}">
             <td class="line-number" aria-label="旧テキスト行番号">${oldNumber}</td>
@@ -163,6 +168,7 @@
   }
 
   function stopActiveWorker() {
+    // 新しい比較やクリア操作が来たら、進行中のWorkerとタイマーをまとめて破棄する。
     if (activeWorkerTimeoutId) {
       window.clearTimeout(activeWorkerTimeoutId);
       activeWorkerTimeoutId = null;
@@ -175,6 +181,7 @@
   }
 
   function finishCompare(worker) {
+    // すでに別のWorkerへ切り替わっている場合は、古い完了通知として無視する。
     if (activeWorker === worker) {
       if (activeWorkerTimeoutId) {
         window.clearTimeout(activeWorkerTimeoutId);
@@ -224,6 +231,7 @@
     latestRequestId = requestId;
     stopActiveWorker();
 
+    // 差分計算は重くなり得るため、メインスレッドではなくWorkerで実行する。
     let worker;
     try {
       worker = new Worker('diff-worker.js');
@@ -235,6 +243,8 @@
     activeWorker = worker;
     compareButton.disabled = true;
     showComparing();
+
+    // Worker内のタイムアウトが効かない異常系でも、UIが計算中のまま残らないようにする。
     activeWorkerTimeoutId = window.setTimeout(() => {
       if (activeWorker !== worker || requestId !== latestRequestId) {
         return;
@@ -247,6 +257,7 @@
 
     worker.addEventListener('message', (event) => {
       const data = event.data;
+      // 連続実行時に、先に始めた比較の遅い応答で最新結果を上書きしない。
       if (!data || data.requestId !== latestRequestId) {
         return;
       }
@@ -283,6 +294,7 @@
   }
 
   function clearAll() {
+    // クリアは進行中の比較を無効化し、後から返るWorker応答も破棄対象にする。
     latestRequestId += 1;
     stopActiveWorker();
     compareButton.disabled = false;

@@ -2,6 +2,7 @@
 (() => {
   'use strict';
 
+  // diffライブラリ側の中止条件。時間と探索量の両方で極端な入力を止める。
   const diffOptions = {
     timeout: 25000,
     maxEditLength: 100000,
@@ -11,6 +12,7 @@
 
   let loadError = null;
 
+  // GitHub Pagesでもそのまま動くよう、Worker内で同梱ライブラリを読み込む。
   try {
     importScripts('vendor/diff.min.js');
   } catch (error) {
@@ -18,6 +20,7 @@
   }
 
   function normalizeParts(parts) {
+    // Worker境界をまたいでも扱いやすいよう、表示に必要な値だけに整える。
     return parts.map((part) => ({
       value: part.value,
       added: part.added === true,
@@ -34,10 +37,12 @@
     }
 
     try {
+      // modeに応じて行単位または単語単位で比較し、中止条件は共通化する。
       const parts = mode === 'word'
         ? self.Diff.diffWordsWithSpace(before, after, diffOptions)
         : self.Diff.diffLines(before, after, diffOptions);
 
+      // diffライブラリはtimeout/maxEditLength到達時にundefinedを返す。
       if (typeof parts === 'undefined') {
         self.postMessage({ type: 'aborted', requestId });
         return;
