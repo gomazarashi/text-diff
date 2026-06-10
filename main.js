@@ -12,11 +12,12 @@
   const removedCount = document.getElementById('removedCount');
 
   const emptyMessage = '比較対象のテキストを入力してください。';
-  const diffOptions = {
-    timeout: 3000,
-    maxEditLength: 20000,
-  };
   const diffAbortedMessage = '差分計算が長時間かかったため中止しました。入力を小さく分けるか、差分範囲を絞って再度お試しください。';
+  const workerUnavailableMessage = 'このブラウザでは Web Worker を利用できないため、長文比較を実行できません。対応ブラウザで再度お試しください。';
+  const workerErrorMessage = '差分計算中に問題が発生しました。時間をおいて再度お試しください。';
+
+  let activeWorker = null;
+  let latestRequestId = 0;
 
   function getMode() {
     const selected = document.querySelector('input[name="diffMode"]:checked');
@@ -138,30 +139,42 @@
     removedCount.textContent = '0';
   }
 
-  function compare() {
-    if (typeof window.Diff === 'undefined') {
-      showEmpty('差分ライブラリを読み込めませんでした。vendor/diff.min.js を確認してください。');
-      return;
+  function showWorkerUnavailable() {
+    result.innerHTML = `<p class="empty-result">${escapeHtml(workerUnavailableMessage)}</p>`;
+    status.textContent = '差分計算を開始できませんでした。';
+    addedCount.textContent = '0';
+    removedCount.textContent = '0';
+  }
+
+  function showWorkerError(message = workerErrorMessage) {
+    result.innerHTML = `<p class="empty-result">${escapeHtml(message)}</p>`;
+    status.textContent = '差分計算に失敗しました。';
+    addedCount.textContent = '0';
+    removedCount.textContent = '0';
+  }
+
+  function showComparing() {
+    result.innerHTML = '<p class="empty-result">差分計算中です...</p>';
+    status.textContent = '差分計算中です。';
+    addedCount.textContent = '0';
+    removedCount.textContent = '0';
+  }
+
+  function stopActiveWorker() {
+    if (activeWorker) {
+      activeWorker.terminate();
+      activeWorker = null;
     }
+  }
 
-    const before = oldText.value;
-    const after = newText.value;
-
-    if (before.length === 0 && after.length === 0) {
-      showEmpty(emptyMessage);
-      return;
+  function finishCompare(worker) {
+    if (activeWorker === worker) {
+      activeWorker = null;
+      compareButton.disabled = false;
     }
+  }
 
-    const mode = getMode();
-    const parts = mode === 'word'
-      ? window.Diff.diffWordsWithSpace(before, after, diffOptions)
-      : window.Diff.diffLines(before, after, diffOptions);
-
-    if (typeof parts === 'undefined') {
-      showAborted();
-      return;
-    }
-
+  function renderDiff(mode, parts) {
     const counts = mode === 'word' ? countWordItems(parts) : countLineItems(parts);
 
     if (mode === 'word') {
@@ -180,7 +193,78 @@
     removedCount.textContent = String(counts.removed);
   }
 
+  function compare() {
+    if (typeof window.Worker === 'undefined') {
+      showWorkerUnavailable();
+      return;
+    }
+
+    const before = oldText.value;
+    const after = newText.value;
+
+    if (before.length === 0 && after.length === 0) {
+      showEmpty(emptyMessage);
+      return;
+    }
+
+    const mode = getMode();
+    const requestId = latestRequestId + 1;
+    latestRequestId = requestId;
+    stopActiveWorker();
+
+    let worker;
+    try {
+      worker = new Worker('diff-worker.js');
+    } catch (error) {
+      showWorkerUnavailable();
+      return;
+    }
+
+    activeWorker = worker;
+    compareButton.disabled = true;
+    showComparing();
+
+    worker.addEventListener('message', (event) => {
+      const data = event.data;
+      if (!data || data.requestId !== latestRequestId) {
+        return;
+      }
+
+      if (data.type === 'result') {
+        renderDiff(data.mode, data.parts);
+      } else if (data.type === 'aborted') {
+        showAborted();
+      } else {
+        showWorkerError(data.message);
+      }
+
+      finishCompare(worker);
+      worker.terminate();
+    });
+
+    worker.addEventListener('error', () => {
+      if (requestId !== latestRequestId) {
+        return;
+      }
+
+      showWorkerError();
+      finishCompare(worker);
+      worker.terminate();
+    });
+
+    try {
+      worker.postMessage({ requestId, before, after, mode });
+    } catch (error) {
+      showWorkerError();
+      finishCompare(worker);
+      worker.terminate();
+    }
+  }
+
   function clearAll() {
+    latestRequestId += 1;
+    stopActiveWorker();
+    compareButton.disabled = false;
     oldText.value = '';
     newText.value = '';
     showEmpty(emptyMessage);
